@@ -57,10 +57,10 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
 
     // Draw previous frames behind the main frame (oldest first, most recent last)
     if (m_onionEnabled && !m_onionFrames.isEmpty()) {
-        static const qreal kOpacities[] = {0.40, 0.20};
+        static const qreal kOpacities[] = {0.60, 0.35};
         int n = m_onionFrames.size();
         for (int i = n - 1; i >= 0; --i) {
-            qreal op = (i < 2) ? kOpacities[i] : 0.10;
+            qreal op = (i < 2) ? kOpacities[i] : 0.15;
             painter.setOpacity(op);
             painter.drawPixmap(target,
                 m_onionFrames.at(i).scaled(target.size(),
@@ -73,4 +73,14 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
     }
 
     painter.drawPixmap(target, m_pixmap);
+
+    // Remind the user when onion is active but there is no previous frame
+    if (m_onionEnabled && m_onionFrames.isEmpty()) {
+        painter.setPen(QColor(200, 120, 120));
+        QFont f = painter.font();
+        f.setPointSize(9);
+        painter.setFont(f);
+        painter.drawText(rect().adjusted(4, 4, -4, -4),
+            Qt::AlignTop | Qt::AlignRight, "Onion: no previous frame");
+    }
 }
