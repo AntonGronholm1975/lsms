@@ -6,6 +6,7 @@
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenuBar>
@@ -245,8 +246,38 @@ void MainWindow::onSaveProjectAs()
 
 void MainWindow::onOpenImages()
 {
-    QStringList paths = QFileDialog::getOpenFileNames(this, "Open Images", {},
-        "Images (*.jpg *.jpeg *.png *.bmp *.tiff *.tif *.webp)");
+    QFileDialog dialog(this, "Open Images");
+    dialog.setFileMode(QFileDialog::ExistingFiles);
+    dialog.setNameFilter("Images (*.jpg *.jpeg *.png *.bmp *.tiff *.tif *.webp)");
+    dialog.setOption(QFileDialog::DontUseNativeDialog);
+    dialog.resize(960, 540);
+
+    auto* preview = new QLabel(&dialog);
+    preview->setMinimumSize(200, 200);
+    preview->setMaximumWidth(240);
+    preview->setAlignment(Qt::AlignCenter);
+    preview->setText("No preview");
+    preview->setStyleSheet("color:#888; border:1px solid #aaa; background:#1a1a1a;");
+
+    // Append preview to the right of the existing dialog grid
+    auto* grid = qobject_cast<QGridLayout*>(dialog.layout());
+    if (grid)
+        grid->addWidget(preview, 0, grid->columnCount(), grid->rowCount(), 1);
+
+    connect(&dialog, &QFileDialog::currentChanged, preview, [preview](const QString& path) {
+        QPixmap px(path);
+        if (!px.isNull())
+            preview->setPixmap(
+                px.scaled(preview->width(), preview->height(),
+                          Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        else
+            preview->setText("No preview");
+    });
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    QStringList paths = dialog.selectedFiles();
     if (paths.isEmpty())
         return;
     paths.sort();
