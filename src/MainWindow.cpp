@@ -348,9 +348,15 @@ void MainWindow::onExport(const QString& format)
     }
 
     QString filter = (format == "mp4") ? "MP4 Video (*.mp4)" : "WebM Video (*.webm)";
-    QString path = QFileDialog::getSaveFileName(this, "Export Video", {}, filter);
+    QString ext     = (format == "mp4") ? ".mp4" : ".webm";
+    QString path = QFileDialog::getSaveFileName(this, "Export Video",
+        QSettings().value("lastExportDir").toString(), filter);
     if (path.isEmpty())
         return;
+    if (!path.endsWith(ext, Qt::CaseInsensitive))
+        path += ext;
+
+    QSettings().setValue("lastExportDir", QFileInfo(path).absolutePath());
 
     QVector<QString> paths;
     paths.reserve(m_project->frameCount());
@@ -359,7 +365,8 @@ void MainWindow::onExport(const QString& format)
 
     VideoExporter exporter(this);
     if (exporter.exportVideo(paths, path, m_project->fps(), format, this))
-        QMessageBox::information(this, "Export", "Video exported successfully.");
+        QMessageBox::information(this, "Export",
+            QString("Video exported successfully.\n\n%1").arg(path));
 }
 
 void MainWindow::onPlayPause()

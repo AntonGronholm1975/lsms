@@ -1,13 +1,16 @@
 #include "VideoExporter.h"
 
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QSettings>
 #include <QString>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <QWidget>
 
 VideoExporter::VideoExporter(QObject* parent)
@@ -20,7 +23,8 @@ bool VideoExporter::isFfmpegAvailable()
     QProcess proc;
     proc.start("ffmpeg", {"-version"});
     proc.waitForFinished(3000);
-    return proc.exitCode() == 0;
+    // error() == UnknownError means the process started correctly
+    return proc.error() == QProcess::UnknownError && proc.exitCode() == 0;
 }
 
 bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
@@ -61,7 +65,9 @@ bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
          << "-i" << tmpDir.filePath("frame_%04d." + ext);
 
     if (format == "mp4")
-        args << "-c:v" << "libx264" << "-pix_fmt" << "yuv420p";
+        // scale filter rounds down to even dimensions required by yuv420p/H.264
+        args << "-vf" << "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+             << "-c:v" << "libx264" << "-pix_fmt" << "yuv420p";
     else
         args << "-c:v" << "libvpx-vp9" << "-b:v" << "0" << "-crf" << "33";
 
