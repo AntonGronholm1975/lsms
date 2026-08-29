@@ -31,6 +31,13 @@ QString Project::imagePath(int index) const
     return m_imagePaths.at(index);
 }
 
+QRectF Project::cropRect(int index) const
+{
+    if (index < 0 || index >= m_cropRects.size())
+        return {};
+    return m_cropRects.at(index);
+}
+
 int Project::fps() const
 {
     return m_fps;
@@ -55,6 +62,7 @@ void Project::addImages(const QStringList& paths)
             continue;
         m_imagePaths.append(path);
         m_pixmaps.append(px);
+        m_cropRects.append(QRectF());
         added = true;
     }
     if (added) {
@@ -69,6 +77,8 @@ void Project::removeFrame(int index)
         return;
     m_imagePaths.remove(index);
     m_pixmaps.remove(index);
+    if (index < m_cropRects.size())
+        m_cropRects.remove(index);
     setModified(true);
     emit framesChanged();
 }
@@ -79,6 +89,8 @@ void Project::duplicateFrame(int index)
         return;
     m_imagePaths.insert(index + 1, m_imagePaths.at(index));
     m_pixmaps.insert(index + 1, m_pixmaps.at(index));
+    QRectF cr = (index < m_cropRects.size()) ? m_cropRects.at(index) : QRectF();
+    m_cropRects.insert(index + 1, cr);
     setModified(true);
     emit framesChanged();
 }
@@ -93,6 +105,8 @@ void Project::moveFrame(int from, int to)
         return;
     m_imagePaths.move(from, to);
     m_pixmaps.move(from, to);
+    if (from < m_cropRects.size() && to < m_cropRects.size())
+        m_cropRects.move(from, to);
     setModified(true);
     emit framesChanged();
 }
@@ -106,15 +120,40 @@ void Project::setFps(int fps)
     emit fpsChanged(m_fps);
 }
 
+void Project::setCropRect(int index, const QRectF& rect)
+{
+    if (index < 0 || index >= m_imagePaths.size())
+        return;
+    while (m_cropRects.size() <= index)
+        m_cropRects.append(QRectF());
+    m_cropRects[index] = rect;
+    setModified(true);
+}
+
+void Project::setCropRectAllFrames(const QRectF& rect)
+{
+    m_cropRects.fill(rect, m_imagePaths.size());
+    setModified(true);
+}
+
 bool Project::save(const QString& path)
 {
     QFileInfo projectFile(path);
     QDir projectDir = projectFile.absoluteDir();
 
     QJsonArray framesArray;
-    for (const QString& imgPath : m_imagePaths) {
+    for (int i = 0; i < m_imagePaths.size(); ++i) {
         QJsonObject frameObj;
-        frameObj["path"] = projectDir.relativeFilePath(imgPath);
+        frameObj["path"] = projectDir.relativeFilePath(m_imagePaths.at(i));
+        if (i < m_cropRects.size() && !m_cropRects.at(i).isEmpty()) {
+            const QRectF& cr = m_cropRects.at(i);
+            QJsonObject cropObj;
+            cropObj["x"] = cr.x();
+            cropObj["y"] = cr.y();
+            cropObj["w"] = cr.width();
+            cropObj["h"] = cr.height();
+            frameObj["crop"] = cropObj;
+        }
         framesArray.append(frameObj);
     }
 
@@ -154,13 +193,21 @@ bool Project::load(const QString& path)
     m_filePath = path;
 
     for (const QJsonValue& v : root["frames"].toArray()) {
-        QString relPath = v.toObject()["path"].toString();
+        QJsonObject fobj = v.toObject();
+        QString relPath = fobj["path"].toString();
         QString absPath = projectDir.absoluteFilePath(relPath);
         QPixmap px(absPath);
         if (px.isNull())
             continue;
         m_imagePaths.append(absPath);
         m_pixmaps.append(px);
+        QRectF cr;
+        if (fobj.contains("crop")) {
+            QJsonObject c = fobj["crop"].toObject();
+            cr = QRectF(c["x"].toDouble(), c["y"].toDouble(),
+                        c["w"].toDouble(), c["h"].toDouble());
+        }
+        m_cropRects.append(cr);
     }
 
     emit fpsChanged(m_fps);
@@ -172,6 +219,7 @@ void Project::reset()
 {
     m_imagePaths.clear();
     m_pixmaps.clear();
+    m_cropRects.clear();
     m_fps = 12;
     m_filePath.clear();
     m_modified = false;

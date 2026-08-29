@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QRectF>
 #include <QVector>
 
 class QWidget;
@@ -14,6 +15,7 @@ public:
     static bool isFfmpegAvailable();
 
     bool exportVideo(const QVector<QString>& imagePaths,
+                     const QVector<QRectF>&  cropRects,
                      const QString& outputPath,
                      int fps,
                      const QString& format,

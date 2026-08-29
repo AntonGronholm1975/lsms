@@ -18,6 +18,8 @@ add_executable(lsms
     src/PlaybackWidget.cpp
     src/FilmstripWidget.h
     src/FilmstripWidget.cpp
+    src/CropDialog.h
+    src/CropDialog.cpp
     src/Project.h
     src/Project.cpp
     src/VideoExporter.h

@@ -1,9 +1,12 @@
 #include "MainWindow.h"
+#include "CropDialog.h"
 #include "FilmstripWidget.h"
 #include "PlaybackWidget.h"
 #include "VideoExporter.h"
 
+#include <QButtonGroup>
 #include <QCloseEvent>
+#include <QColorDialog>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
@@ -95,6 +98,102 @@ void MainWindow::setupUi()
 
     mainLayout->addWidget(transport);
 
+    // Drawing toolbar
+    auto* drawBar = new QWidget(central);
+    drawBar->setFixedHeight(40);
+    auto* dl = new QHBoxLayout(drawBar);
+    dl->setContentsMargins(8, 2, 8, 2);
+    dl->setSpacing(4);
+
+    m_drawModeBtn = new QPushButton("\u270F Draw", drawBar);
+    m_drawModeBtn->setCheckable(true);
+    m_drawModeBtn->setFixedWidth(72);
+    m_drawModeBtn->setToolTip("Toggle drawing mode");
+    dl->addWidget(m_drawModeBtn);
+
+    dl->addWidget(new QLabel("|", drawBar));
+
+    // Exclusive tool buttons
+    m_toolGroup = new QButtonGroup(this);
+    auto addTool = [&](const QString& label, const QString& tip, DrawTool tool) {
+        auto* btn = new QPushButton(label, drawBar);
+        btn->setCheckable(true);
+        btn->setFixedWidth(60);
+        btn->setToolTip(tip);
+        btn->setEnabled(false);
+        m_toolGroup->addButton(btn, int(tool));
+        dl->addWidget(btn);
+        return btn;
+    };
+    addTool("Pen",     "Freehand pen",   DrawTool::Pen);
+    addTool("Line",    "Straight line",  DrawTool::Line);
+    addTool("Rect",    "Rectangle",      DrawTool::Rectangle);
+    addTool("Ellipse", "Ellipse",        DrawTool::Ellipse);
+    addTool("Eraser",  "Eraser",         DrawTool::Eraser);
+    m_toolGroup->button(int(DrawTool::Pen))->setChecked(true);
+
+    dl->addWidget(new QLabel("|", drawBar));
+
+    m_colorBtn = new QPushButton(drawBar);
+    m_colorBtn->setFixedSize(28, 28);
+    m_colorBtn->setStyleSheet("background-color: red; border: 1px solid #888;");
+    m_colorBtn->setToolTip("Pick drawing colour");
+    m_colorBtn->setEnabled(false);
+    connect(m_colorBtn, &QPushButton::clicked, this, [this]() {
+        QColor c = QColorDialog::getColor(Qt::red, this, "Drawing Colour");
+        if (c.isValid()) {
+            m_playbackWidget->setDrawColor(c);
+            m_colorBtn->setStyleSheet(
+                QString("background-color: %1; border: 1px solid #888;").arg(c.name()));
+        }
+    });
+    dl->addWidget(m_colorBtn);
+
+    dl->addWidget(new QLabel("Size:", drawBar));
+    m_brushSpinBox = new QSpinBox(drawBar);
+    m_brushSpinBox->setRange(1, 40);
+    m_brushSpinBox->setValue(4);
+    m_brushSpinBox->setFixedWidth(52);
+    m_brushSpinBox->setEnabled(false);
+    connect(m_brushSpinBox, &QSpinBox::valueChanged, m_playbackWidget, &PlaybackWidget::setBrushSize);
+    dl->addWidget(m_brushSpinBox);
+
+    dl->addStretch();
+
+    auto* clearFrameBtn = new QPushButton("Clear Frame", drawBar);
+    clearFrameBtn->setEnabled(false);
+    clearFrameBtn->setToolTip("Clear annotations on this frame");
+    connect(clearFrameBtn, &QPushButton::clicked, this, [this]() {
+        m_playbackWidget->clearAnnotation();
+        if (m_currentFrame < m_annotations.size())
+            m_annotations[m_currentFrame] = {};
+    });
+    dl->addWidget(clearFrameBtn);
+
+    auto* clearAllBtn = new QPushButton("Clear All", drawBar);
+    clearAllBtn->setEnabled(false);
+    clearAllBtn->setToolTip("Clear annotations on all frames");
+    connect(clearAllBtn, &QPushButton::clicked, this, [this, clearFrameBtn]() {
+        m_annotations.fill({});
+        m_playbackWidget->clearAnnotation();
+    });
+    dl->addWidget(clearAllBtn);
+
+    // Wire draw mode toggle to enable/disable the rest of the toolbar
+    connect(m_drawModeBtn, &QPushButton::toggled, this, [this, clearFrameBtn, clearAllBtn](bool on) {
+        syncDrawingToolbar(on);
+        clearFrameBtn->setEnabled(on);
+        clearAllBtn->setEnabled(on);
+        m_playbackWidget->setDrawingEnabled(on);
+    });
+
+    // Wire tool selection
+    connect(m_toolGroup, &QButtonGroup::idClicked, this, [this](int id) {
+        m_playbackWidget->setDrawTool(DrawTool(id));
+    });
+
+    mainLayout->addWidget(drawBar);
+
     m_filmstripWidget = new FilmstripWidget(central);
     mainLayout->addWidget(m_filmstripWidget);
 }
@@ -144,6 +243,12 @@ void MainWindow::setupMenuBar()
     connect(dupAct, &QAction::triggered, this, [this]() {
         onDuplicateFrame(m_currentFrame);
     });
+
+    edit->addSeparator();
+
+    auto* cropAct = edit->addAction("&Crop Frame\u2026");
+    cropAct->setShortcut(QKeySequence("Ctrl+K"));
+    connect(cropAct, &QAction::triggered, this, &MainWindow::onCropFrame);
 
     QMenu* playback = menuBar()->addMenu("&Playback");
 
@@ -223,6 +328,8 @@ void MainWindow::connectSignals()
     });
 
     connect(m_playbackTimer, &QTimer::timeout, this, &MainWindow::onPlaybackTick);
+    connect(m_playbackWidget, &PlaybackWidget::annotationChanged,
+            this, &MainWindow::onAnnotationChanged);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -359,14 +466,45 @@ void MainWindow::onExport(const QString& format)
     QSettings().setValue("lastExportDir", QFileInfo(path).absolutePath());
 
     QVector<QString> paths;
+    QVector<QRectF>  cropRects;
     paths.reserve(m_project->frameCount());
-    for (int i = 0; i < m_project->frameCount(); ++i)
+    for (int i = 0; i < m_project->frameCount(); ++i) {
         paths.append(m_project->imagePath(i));
+        cropRects.append(m_project->cropRect(i));
+    }
 
     VideoExporter exporter(this);
-    if (exporter.exportVideo(paths, path, m_project->fps(), format, this))
+    if (exporter.exportVideo(paths, cropRects, path, m_project->fps(), format, this))
         QMessageBox::information(this, "Export",
             QString("Video exported successfully.\n\n%1").arg(path));
+}
+
+void MainWindow::onCropFrame()
+{
+    if (m_project->frameCount() == 0) return;
+    CropDialog dlg(m_project->pixmap(m_currentFrame),
+                   m_project->cropRect(m_currentFrame), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    if (dlg.applyToAll())
+        m_project->setCropRectAllFrames(dlg.cropRect());
+    else
+        m_project->setCropRect(m_currentFrame, dlg.cropRect());
+    m_playbackWidget->setCropRect(m_project->cropRect(m_currentFrame));
+    updateOnionFrames();
+}
+
+void MainWindow::syncDrawingToolbar(bool enabled)
+{
+    for (QAbstractButton* btn : m_toolGroup->buttons())
+        btn->setEnabled(enabled);
+    m_colorBtn->setEnabled(enabled);
+    m_brushSpinBox->setEnabled(enabled);
+}
+
+void MainWindow::onAnnotationChanged(const QPixmap& layer)
+{
+    if (m_currentFrame < m_annotations.size())
+        m_annotations[m_currentFrame] = layer;
 }
 
 void MainWindow::onPlayPause()
@@ -474,6 +612,9 @@ void MainWindow::refreshFilmstrip()
         return m_project->pixmap(i);
     });
 
+    // Keep annotation vector in sync with frame count
+    m_annotations.resize(m_project->frameCount());
+
     if (m_project->frameCount() == 0) {
         m_currentFrame = 0;
         m_playbackWidget->clear();
@@ -495,6 +636,9 @@ void MainWindow::showFrame(int index)
         return;
     m_currentFrame = index;
     m_playbackWidget->showFrame(m_project->pixmap(index));
+    m_playbackWidget->setCropRect(m_project->cropRect(index));
+    m_playbackWidget->setAnnotation(
+        index < m_annotations.size() ? m_annotations.at(index) : QPixmap{});
     updateOnionFrames();
 }
 
