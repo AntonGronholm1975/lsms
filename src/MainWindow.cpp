@@ -161,6 +161,37 @@ void MainWindow::setupMenuBar()
 
     auto* webmAct = exportMenu->addAction("Export as &WebM\u2026");
     connect(webmAct, &QAction::triggered, this, [this]() { onExport("webm"); });
+
+    QMenu* helpMenu = menuBar()->addMenu("&Help");
+
+    auto* shortcutsAct = helpMenu->addAction("&Keyboard Shortcuts");
+    connect(shortcutsAct, &QAction::triggered, this, [this]() {
+        QMessageBox::information(this, "Keyboard Shortcuts",
+            "Space          Play / Pause\n"
+            "Esc            Stop (return to frame 1)\n"
+            "\u2190 / \u2192        Previous / Next frame\n"
+            "Del            Delete selected frame\n"
+            "Ctrl+D         Duplicate selected frame\n"
+            "Ctrl+I         Open Images\u2026\n"
+            "Ctrl+S         Save Project\n"
+            "Ctrl+Shift+S   Save Project As\u2026\n"
+            "Ctrl+O         Open Project\u2026\n"
+            "Ctrl+N         New Project");
+    });
+
+    helpMenu->addSeparator();
+
+    auto* aboutAct = helpMenu->addAction("&About");
+    connect(aboutAct, &QAction::triggered, this, [this]() {
+        QMessageBox::about(this, "About Luna\u2019s Stop Motion Studio",
+            "<h2>Luna\u2019s Stop Motion Studio</h2>"
+            "<p>Version 0.1</p>"
+            "<p>A simple stop motion animation tool.</p>"
+            "<p>Open images from disk, arrange them in the filmstrip, "
+            "preview playback, and export to MP4 or WebM via ffmpeg.</p>"
+            "<p><a href=\"https://github.com/AntonGronholm1975/lsms\">"
+            "github.com/AntonGronholm1975/lsms</a></p>");
+    });
 }
 
 void MainWindow::connectSignals()
