@@ -75,6 +75,16 @@ void MainWindow::setupUi()
 
     tl->addStretch();
 
+    m_onionBtn = new QPushButton("Onion", transport);
+    m_onionBtn->setCheckable(true);
+    m_onionBtn->setToolTip("Toggle onion skinning — shows previous frame(s) as a red ghost");
+    m_onionBtn->setFixedWidth(60);
+    connect(m_onionBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_playbackWidget->setOnionEnabled(on);
+        updateOnionFrames();
+    });
+    tl->addWidget(m_onionBtn);
+
     tl->addWidget(new QLabel("FPS:", transport));
     m_fpsSpinBox = new QSpinBox(transport);
     m_fpsSpinBox->setRange(1, 60);
@@ -470,6 +480,22 @@ void MainWindow::showFrame(int index)
         return;
     m_currentFrame = index;
     m_playbackWidget->showFrame(m_project->pixmap(index));
+    updateOnionFrames();
+}
+
+void MainWindow::updateOnionFrames()
+{
+    if (!m_onionBtn->isChecked() || m_playing) {
+        m_playbackWidget->setOnionFrames({});
+        return;
+    }
+    QVector<QPixmap> prev;
+    for (int i = 1; i <= 2; ++i) {
+        int idx = m_currentFrame - i;
+        if (idx >= 0)
+            prev.append(m_project->pixmap(idx));
+    }
+    m_playbackWidget->setOnionFrames(prev);
 }
 
 void MainWindow::setPlaying(bool playing)
@@ -482,9 +508,11 @@ void MainWindow::setPlaying(bool playing)
     if (m_playing) {
         m_playbackTimer->start(1000 / m_project->fps());
         m_playPauseBtn->setText("\u23F8 Pause");
+        m_playbackWidget->setOnionFrames({}); // hide onion during playback
     } else {
         m_playbackTimer->stop();
         m_playPauseBtn->setText("\u25B6 Play");
+        updateOnionFrames(); // restore onion when paused
     }
 }
 

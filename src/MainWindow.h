@@ -49,12 +49,14 @@ private:
     void showFrame(int index);
     void setPlaying(bool playing);
     void updateWindowTitle();
+    void updateOnionFrames();
     bool confirmDiscardChanges();
 
     Project* m_project;
     PlaybackWidget* m_playbackWidget;
     FilmstripWidget* m_filmstripWidget;
     QPushButton* m_playPauseBtn;
+    QPushButton* m_onionBtn;
     QSpinBox* m_fpsSpinBox;
     QTimer* m_playbackTimer;
     int m_currentFrame = 0;

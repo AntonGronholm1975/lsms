@@ -19,6 +19,19 @@ void PlaybackWidget::showFrame(const QPixmap& pixmap)
 void PlaybackWidget::clear()
 {
     m_pixmap = {};
+    m_onionFrames.clear();
+    update();
+}
+
+void PlaybackWidget::setOnionEnabled(bool enabled)
+{
+    m_onionEnabled = enabled;
+    update();
+}
+
+void PlaybackWidget::setOnionFrames(const QVector<QPixmap>& prevFrames)
+{
+    m_onionFrames = prevFrames;
     update();
 }
 
@@ -41,5 +54,23 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
     QSize scaled = m_pixmap.size().scaled(size(), Qt::KeepAspectRatio);
     QRect target(QPoint(0, 0), scaled);
     target.moveCenter(rect().center());
+
+    // Draw previous frames behind the main frame (oldest first, most recent last)
+    if (m_onionEnabled && !m_onionFrames.isEmpty()) {
+        static const qreal kOpacities[] = {0.40, 0.20};
+        int n = m_onionFrames.size();
+        for (int i = n - 1; i >= 0; --i) {
+            qreal op = (i < 2) ? kOpacities[i] : 0.10;
+            painter.setOpacity(op);
+            painter.drawPixmap(target,
+                m_onionFrames.at(i).scaled(target.size(),
+                    Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+            // Reddish tint to distinguish onion frames from the main frame
+            painter.setOpacity(op * 0.35);
+            painter.fillRect(target, QColor(220, 60, 60));
+        }
+        painter.setOpacity(1.0);
+    }
+
     painter.drawPixmap(target, m_pixmap);
 }

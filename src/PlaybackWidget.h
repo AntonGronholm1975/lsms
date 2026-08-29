@@ -1,7 +1,8 @@
 #pragma once
 
-#include <QWidget>
 #include <QPixmap>
+#include <QVector>
+#include <QWidget>
 
 class PlaybackWidget : public QWidget
 {
@@ -11,10 +12,14 @@ public:
 
     void showFrame(const QPixmap& pixmap);
     void clear();
+    void setOnionEnabled(bool enabled);
+    void setOnionFrames(const QVector<QPixmap>& prevFrames);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
     QPixmap m_pixmap;
+    QVector<QPixmap> m_onionFrames;
+    bool m_onionEnabled = false;
 };
