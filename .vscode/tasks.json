@@ -46,12 +46,9 @@
         {
             "label": "Build & Run",
             "type": "shell",
-            "command": "./build/lsms",
+            "command": "env -i HOME=\"$HOME\" DISPLAY=\"$DISPLAY\" XAUTHORITY=\"$XAUTHORITY\" WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\" XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\" PATH=\"/usr/local/bin:/usr/bin:/bin\" \"${workspaceFolder}/build/lsms\"",
             "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "LD_LIBRARY_PATH": ""
-                }
+                "cwd": "${workspaceFolder}"
             },
             "dependsOn": "Build",
             "group": {
