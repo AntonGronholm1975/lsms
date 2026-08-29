@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
@@ -41,6 +42,11 @@ ChromaKeyDialog::ChromaKeyDialog(const QPixmap& frame,
 
     buildUi(current);
     updatePreview();
+
+    // Allow clicking on preview to pick the key colour
+    m_previewLabel->setCursor(Qt::CrossCursor);
+    m_previewLabel->setToolTip("Click on the image to pick the key colour");
+    m_previewLabel->installEventFilter(this);
 }
 
 void ChromaKeyDialog::buildUi(const ChromaKeySettings& s)
@@ -252,6 +258,30 @@ void ChromaKeyDialog::pickKeyColor()
     m_keyColorBtn->setStyleSheet(
         QString("background-color: %1; border: 1px solid #555;").arg(c.name()));
     schedulePreviewUpdate();
+}
+
+bool ChromaKeyDialog::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj == m_previewLabel && event->type() == QEvent::MouseButtonPress) {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton) {
+            // Map label coords to source image coords (image is centred in label)
+            int offX = (m_previewLabel->width()  - m_sourceImage.width())  / 2;
+            int offY = (m_previewLabel->height() - m_sourceImage.height()) / 2;
+            int imgX = me->pos().x() - offX;
+            int imgY = me->pos().y() - offY;
+            if (imgX >= 0 && imgX < m_sourceImage.width() &&
+                imgY >= 0 && imgY < m_sourceImage.height()) {
+                QColor picked = m_sourceImage.pixelColor(imgX, imgY);
+                m_settings.keyColor = picked;
+                m_keyColorBtn->setStyleSheet(
+                    QString("background-color: %1; border: 1px solid #555;").arg(picked.name()));
+                m_enabledBox->setChecked(true);
+                schedulePreviewUpdate();
+            }
+        }
+    }
+    return QDialog::eventFilter(obj, event);
 }
 
 void ChromaKeyDialog::pickBgColor()

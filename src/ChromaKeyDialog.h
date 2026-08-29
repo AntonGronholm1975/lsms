@@ -2,6 +2,7 @@
 
 #include "ChromaKeySettings.h"
 #include <QDialog>
+#include <QEvent>
 #include <QImage>
 #include <QPixmap>
 
@@ -29,6 +30,9 @@ private slots:
     void pickKeyColor();
     void pickBgColor();
     void browseBgImage();
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     void buildUi(const ChromaKeySettings& initial);
