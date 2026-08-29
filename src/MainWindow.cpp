@@ -12,6 +12,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSettings>
 #include <QSpinBox>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -249,11 +250,13 @@ void MainWindow::onOpenProject()
     if (!confirmDiscardChanges())
         return;
 
-    QString path = QFileDialog::getOpenFileName(this, "Open Project", {},
+    QString path = QFileDialog::getOpenFileName(this, "Open Project",
+        QSettings().value("lastProjectDir").toString(),
         "LSMS Project (*.lsms)");
     if (path.isEmpty())
         return;
 
+    QSettings().setValue("lastProjectDir", QFileInfo(path).absolutePath());
     setPlaying(false);
     m_currentFrame = 0;
 
@@ -274,7 +277,8 @@ void MainWindow::onSaveProject()
 
 void MainWindow::onSaveProjectAs()
 {
-    QString path = QFileDialog::getSaveFileName(this, "Save Project As", {},
+    QString path = QFileDialog::getSaveFileName(this, "Save Project As",
+        QSettings().value("lastProjectDir").toString(),
         "LSMS Project (*.lsms)");
     if (path.isEmpty())
         return;
@@ -282,6 +286,8 @@ void MainWindow::onSaveProjectAs()
         path += ".lsms";
     if (!m_project->save(path))
         QMessageBox::critical(this, "Save Project", "Failed to save the project.");
+    else
+        QSettings().setValue("lastProjectDir", QFileInfo(path).absolutePath());
     updateWindowTitle();
 }
 
@@ -291,6 +297,7 @@ void MainWindow::onOpenImages()
     dialog.setFileMode(QFileDialog::ExistingFiles);
     dialog.setNameFilter("Images (*.jpg *.jpeg *.png *.bmp *.tiff *.tif *.webp)");
     dialog.setOption(QFileDialog::DontUseNativeDialog);
+    dialog.setDirectory(QSettings().value("lastImageDir").toString());
     dialog.resize(960, 540);
 
     auto* preview = new QLabel(&dialog);
@@ -321,6 +328,7 @@ void MainWindow::onOpenImages()
     QStringList paths = dialog.selectedFiles();
     if (paths.isEmpty())
         return;
+    QSettings().setValue("lastImageDir", QFileInfo(paths.first()).absolutePath());
     paths.sort();
     m_project->addImages(paths);
 }
