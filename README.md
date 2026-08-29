@@ -44,8 +44,10 @@ The binary is `build/lsms`.
 - **Filmstrip editor** — drag-and-drop reorder, right-click duplicate/delete
 - **Playback** — play/pause/stop, frame stepping, 1–60 FPS
 - **Onion skinning** — shows previous 1–2 frames as red-tinted ghosts while editing
+- **Non-destructive crop** — drag a crop region per-frame or across all frames; stored in the project file
+- **Drawing overlay** — annotate frames with pen, line, rectangle, ellipse, or eraser (not exported to video)
 - **Projects** — save/load `.lsms` project files (relative image paths, portable)
-- **Export** — MP4 (H.264) and WebM (VP9) via ffmpeg
+- **Export** — MP4 (H.264) and WebM (VP9) via ffmpeg (crop is applied to the exported video)
 
 ## Keyboard Shortcuts
 
@@ -56,6 +58,7 @@ The binary is `build/lsms`.
 | `←` / `→` | Previous / Next frame |
 | `Del` | Delete selected frame |
 | `Ctrl+D` | Duplicate selected frame |
+| `Ctrl+K` | Crop frame… |
 | `Ctrl+I` | Open Images… |
 | `Ctrl+S` | Save Project |
 | `Ctrl+O` | Open Project… |
@@ -69,9 +72,10 @@ See [docs/user-guide.md](docs/user-guide.md) for the full user guide.
 lsms/
 ├── src/
 │   ├── main.cpp
-│   ├── MainWindow.{h,cpp}       # Application shell, menus, transport bar
-│   ├── PlaybackWidget.{h,cpp}   # Frame viewer with onion skinning
+│   ├── MainWindow.{h,cpp}       # Application shell, menus, toolbars
+│   ├── PlaybackWidget.{h,cpp}   # Frame viewer, onion skin, drawing overlay
 │   ├── FilmstripWidget.{h,cpp}  # Thumbnail strip with drag-drop
+│   ├── CropDialog.{h,cpp}       # Interactive crop-region selector
 │   ├── Project.{h,cpp}          # Data model and .lsms JSON persistence
 │   └── VideoExporter.{h,cpp}    # ffmpeg-based MP4/WebM export
 ├── resources/
