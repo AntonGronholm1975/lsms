@@ -38,6 +38,13 @@ QRectF Project::cropRect(int index) const
     return m_cropRects.at(index);
 }
 
+ChromaKeySettings Project::chromaSettings(int index) const
+{
+    if (index < 0 || index >= m_chromaSettings.size())
+        return {};
+    return m_chromaSettings.at(index);
+}
+
 int Project::fps() const
 {
     return m_fps;
@@ -63,6 +70,7 @@ void Project::addImages(const QStringList& paths)
         m_imagePaths.append(path);
         m_pixmaps.append(px);
         m_cropRects.append(QRectF());
+        m_chromaSettings.append(ChromaKeySettings{});
         added = true;
     }
     if (added) {
@@ -79,6 +87,8 @@ void Project::removeFrame(int index)
     m_pixmaps.remove(index);
     if (index < m_cropRects.size())
         m_cropRects.remove(index);
+    if (index < m_chromaSettings.size())
+        m_chromaSettings.remove(index);
     setModified(true);
     emit framesChanged();
 }
@@ -91,6 +101,8 @@ void Project::duplicateFrame(int index)
     m_pixmaps.insert(index + 1, m_pixmaps.at(index));
     QRectF cr = (index < m_cropRects.size()) ? m_cropRects.at(index) : QRectF();
     m_cropRects.insert(index + 1, cr);
+    ChromaKeySettings ck = (index < m_chromaSettings.size()) ? m_chromaSettings.at(index) : ChromaKeySettings{};
+    m_chromaSettings.insert(index + 1, ck);
     setModified(true);
     emit framesChanged();
 }
@@ -107,6 +119,8 @@ void Project::moveFrame(int from, int to)
     m_pixmaps.move(from, to);
     if (from < m_cropRects.size() && to < m_cropRects.size())
         m_cropRects.move(from, to);
+    if (from < m_chromaSettings.size() && to < m_chromaSettings.size())
+        m_chromaSettings.move(from, to);
     setModified(true);
     emit framesChanged();
 }
@@ -136,6 +150,22 @@ void Project::setCropRectAllFrames(const QRectF& rect)
     setModified(true);
 }
 
+void Project::setChromaSettings(int index, const ChromaKeySettings& s)
+{
+    if (index < 0 || index >= m_imagePaths.size())
+        return;
+    while (m_chromaSettings.size() <= index)
+        m_chromaSettings.append(ChromaKeySettings{});
+    m_chromaSettings[index] = s;
+    setModified(true);
+}
+
+void Project::setChromaSettingsAllFrames(const ChromaKeySettings& s)
+{
+    m_chromaSettings.fill(s, m_imagePaths.size());
+    setModified(true);
+}
+
 bool Project::save(const QString& path)
 {
     QFileInfo projectFile(path);
@@ -153,6 +183,19 @@ bool Project::save(const QString& path)
             cropObj["w"] = cr.width();
             cropObj["h"] = cr.height();
             frameObj["crop"] = cropObj;
+        }
+        if (i < m_chromaSettings.size() && m_chromaSettings.at(i).enabled) {
+            const ChromaKeySettings& ck = m_chromaSettings.at(i);
+            QJsonObject ckObj;
+            ckObj["enabled"]       = ck.enabled;
+            ckObj["keyColor"]      = ck.keyColor.name();
+            ckObj["tolerance"]     = ck.tolerance;
+            ckObj["feather"]       = ck.feather;
+            ckObj["spillSuppress"] = ck.spillSuppress;
+            ckObj["bgMode"]        = int(ck.bgMode);
+            ckObj["bgColor"]       = ck.bgColor.name();
+            ckObj["bgImagePath"]   = ck.bgImagePath;
+            frameObj["chroma"]     = ckObj;
         }
         framesArray.append(frameObj);
     }
@@ -208,6 +251,19 @@ bool Project::load(const QString& path)
                         c["w"].toDouble(), c["h"].toDouble());
         }
         m_cropRects.append(cr);
+        ChromaKeySettings ck;
+        if (fobj.contains("chroma")) {
+            QJsonObject c = fobj["chroma"].toObject();
+            ck.enabled       = c["enabled"].toBool();
+            ck.keyColor      = QColor(c["keyColor"].toString());
+            ck.tolerance     = c["tolerance"].toInt(80);
+            ck.feather       = c["feather"].toInt(15);
+            ck.spillSuppress = c["spillSuppress"].toInt(30);
+            ck.bgMode        = ChromaKeySettings::BgMode(c["bgMode"].toInt(0));
+            ck.bgColor       = QColor(c["bgColor"].toString("#000000"));
+            ck.bgImagePath   = c["bgImagePath"].toString();
+        }
+        m_chromaSettings.append(ck);
     }
 
     emit fpsChanged(m_fps);
@@ -220,6 +276,7 @@ void Project::reset()
     m_imagePaths.clear();
     m_pixmaps.clear();
     m_cropRects.clear();
+    m_chromaSettings.clear();
     m_fps = 12;
     m_filePath.clear();
     m_modified = false;

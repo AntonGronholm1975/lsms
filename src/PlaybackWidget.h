@@ -1,10 +1,12 @@
 #pragma once
 
 #include <QColor>
+#include <QImage>
 #include <QPixmap>
 #include <QRectF>
 #include <QVector>
 #include <QWidget>
+#include "ChromaKeySettings.h"
 
 enum class DrawTool { Pen, Line, Rectangle, Ellipse, Eraser };
 
@@ -21,6 +23,9 @@ public:
 
     // Crop
     void setCropRect(const QRectF& normRect);
+
+    // Chroma key
+    void setChromaSettings(const ChromaKeySettings& settings);
 
     // Drawing overlay
     void setDrawingEnabled(bool enabled);
@@ -46,11 +51,17 @@ private:
     void   drawOnAnnotation(const QPoint& from, const QPoint& to);
     void   commitShapeToAnnotation();
     void   ensureAnnotation();
+    void   applyChromaKey();
 
     QPixmap        m_pixmap;
     QVector<QPixmap> m_onionFrames;
     bool           m_onionEnabled = false;
     QRectF         m_cropRect;
+
+    // Chroma key
+    ChromaKeySettings m_chromaSettings;
+    QPixmap           m_displayPixmap; // processed result (chroma applied)
+    QImage            m_bgImage;       // loaded bg image for chroma (at display res)
 
     // Drawing
     QPixmap   m_annotation;

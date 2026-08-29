@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "ChromaKeyDialog.h"
+#include "ChromaKeySettings.h"
 #include "CropDialog.h"
 #include "FilmstripWidget.h"
 #include "PlaybackWidget.h"
@@ -250,6 +252,10 @@ void MainWindow::setupMenuBar()
     cropAct->setShortcut(QKeySequence("Ctrl+K"));
     connect(cropAct, &QAction::triggered, this, &MainWindow::onCropFrame);
 
+    auto* chromaAct = edit->addAction("C&hroma Key\u2026");
+    chromaAct->setShortcut(QKeySequence("Ctrl+H"));
+    connect(chromaAct, &QAction::triggered, this, &MainWindow::onChromaKey);
+
     QMenu* playback = menuBar()->addMenu("&Playback");
 
     auto* playAct = playback->addAction("&Play / Pause");
@@ -467,14 +473,16 @@ void MainWindow::onExport(const QString& format)
 
     QVector<QString> paths;
     QVector<QRectF>  cropRects;
+    QVector<ChromaKeySettings> chromaRects;
     paths.reserve(m_project->frameCount());
     for (int i = 0; i < m_project->frameCount(); ++i) {
         paths.append(m_project->imagePath(i));
         cropRects.append(m_project->cropRect(i));
+        chromaRects.append(m_project->chromaSettings(i));
     }
 
     VideoExporter exporter(this);
-    if (exporter.exportVideo(paths, cropRects, path, m_project->fps(), format, this))
+    if (exporter.exportVideo(paths, cropRects, chromaRects, path, m_project->fps(), format, this))
         QMessageBox::information(this, "Export",
             QString("Video exported successfully.\n\n%1").arg(path));
 }
@@ -491,6 +499,19 @@ void MainWindow::onCropFrame()
         m_project->setCropRect(m_currentFrame, dlg.cropRect());
     m_playbackWidget->setCropRect(m_project->cropRect(m_currentFrame));
     updateOnionFrames();
+}
+
+void MainWindow::onChromaKey()
+{
+    if (m_project->frameCount() == 0) return;
+    ChromaKeyDialog dlg(m_project->pixmap(m_currentFrame),
+                        m_project->chromaSettings(m_currentFrame), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    if (dlg.applyToAll())
+        m_project->setChromaSettingsAllFrames(dlg.settings());
+    else
+        m_project->setChromaSettings(m_currentFrame, dlg.settings());
+    m_playbackWidget->setChromaSettings(m_project->chromaSettings(m_currentFrame));
 }
 
 void MainWindow::syncDrawingToolbar(bool enabled)
@@ -637,6 +658,7 @@ void MainWindow::showFrame(int index)
     m_currentFrame = index;
     m_playbackWidget->showFrame(m_project->pixmap(index));
     m_playbackWidget->setCropRect(m_project->cropRect(index));
+    m_playbackWidget->setChromaSettings(m_project->chromaSettings(index));
     m_playbackWidget->setAnnotation(
         index < m_annotations.size() ? m_annotations.at(index) : QPixmap{});
     updateOnionFrames();

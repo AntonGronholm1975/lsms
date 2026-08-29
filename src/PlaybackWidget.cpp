@@ -1,4 +1,5 @@
 #include "PlaybackWidget.h"
+#include "ChromaKeyProcessor.h"
 
 #include <QMouseEvent>
 #include <QPainter>
@@ -16,12 +17,15 @@ PlaybackWidget::PlaybackWidget(QWidget* parent)
 void PlaybackWidget::showFrame(const QPixmap& pixmap)
 {
     m_pixmap = pixmap;
+    m_displayPixmap = {};
+    applyChromaKey();
     update();
 }
 
 void PlaybackWidget::clear()
 {
     m_pixmap = {};
+    m_displayPixmap = {};
     m_onionFrames.clear();
     m_annotation = {};
     update();
@@ -42,6 +46,23 @@ void PlaybackWidget::setOnionFrames(const QVector<QPixmap>& prevFrames)
 void PlaybackWidget::setCropRect(const QRectF& normRect)
 {
     m_cropRect = normRect;
+    m_displayPixmap = {};
+    applyChromaKey();
+    update();
+}
+
+void PlaybackWidget::setChromaSettings(const ChromaKeySettings& settings)
+{
+    m_chromaSettings = settings;
+    m_displayPixmap  = {};
+    // Pre-load bg image at display resolution for fast painting
+    m_bgImage = {};
+    if (settings.enabled &&
+        settings.bgMode == ChromaKeySettings::BackgroundImage &&
+        !settings.bgImagePath.isEmpty()) {
+        m_bgImage = QImage(settings.bgImagePath);
+    }
+    applyChromaKey();
     update();
 }
 
@@ -98,6 +119,35 @@ void PlaybackWidget::ensureAnnotation()
     if (!m_annotation.isNull() || m_target.isEmpty()) return;
     m_annotation = QPixmap(m_target.size());
     m_annotation.fill(Qt::transparent);
+}
+
+void PlaybackWidget::applyChromaKey()
+{
+    if (!m_chromaSettings.enabled || m_pixmap.isNull()) {
+        m_displayPixmap = {};
+        return;
+    }
+    QRect tgt = computeTarget(m_pixmap);
+    if (tgt.isEmpty()) return;
+
+    // Apply crop then scale to display size — keeps preview fast
+    QPixmap srcPx = m_pixmap;
+    if (!m_cropRect.isEmpty()) {
+        QRect px(qRound(m_pixmap.width()  * m_cropRect.x()),
+                 qRound(m_pixmap.height() * m_cropRect.y()),
+                 qRound(m_pixmap.width()  * m_cropRect.width()),
+                 qRound(m_pixmap.height() * m_cropRect.height()));
+        srcPx = m_pixmap.copy(px);
+    }
+    QImage scaled = srcPx.scaled(tgt.size(), Qt::IgnoreAspectRatio,
+                                  Qt::SmoothTransformation).toImage();
+
+    QImage bg;
+    if (!m_bgImage.isNull())
+        bg = m_bgImage.scaled(tgt.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    m_displayPixmap = QPixmap::fromImage(
+        ChromaKeyProcessor::process(scaled, m_chromaSettings, bg));
 }
 
 void PlaybackWidget::drawOnAnnotation(const QPoint& from, const QPoint& to)
@@ -193,6 +243,10 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
     }
 
     painter.drawPixmap(m_target, m_pixmap, srcRect);
+
+    // If chroma key is active, overdraw with the processed result
+    if (!m_displayPixmap.isNull())
+        painter.drawPixmap(m_target, m_displayPixmap);
 
     // Annotation overlay
     if (!m_annotation.isNull())

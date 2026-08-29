@@ -20,6 +20,11 @@ add_executable(lsms
     src/FilmstripWidget.cpp
     src/CropDialog.h
     src/CropDialog.cpp
+    src/ChromaKeySettings.h
+    src/ChromaKeyProcessor.h
+    src/ChromaKeyProcessor.cpp
+    src/ChromaKeyDialog.h
+    src/ChromaKeyDialog.cpp
     src/Project.h
     src/Project.cpp
     src/VideoExporter.h

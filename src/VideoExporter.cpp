@@ -1,4 +1,5 @@
 #include "VideoExporter.h"
+#include "ChromaKeyProcessor.h"
 
 #include <QCoreApplication>
 #include <QDesktopServices>
@@ -29,6 +30,7 @@ bool VideoExporter::isFfmpegAvailable()
 
 bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
                                  const QVector<QRectF>&  cropRects,
+                                 const QVector<ChromaKeySettings>& chromaSettings,
                                  const QString& outputPath,
                                  int fps,
                                  const QString& format,
@@ -53,13 +55,19 @@ bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
         QString dest = tmpDir.filePath(
             QString("frame_%1.%2").arg(i + 1, 4, 10, QChar('0')).arg(ext));
         QRectF crop = (i < cropRects.size()) ? cropRects.at(i) : QRectF();
-        if (!crop.isEmpty()) {
+        ChromaKeySettings ck = (i < chromaSettings.size()) ? chromaSettings.at(i) : ChromaKeySettings{};
+        if (!crop.isEmpty() || ck.enabled) {
             QImage img(imagePaths.at(i));
-            QRect px(qRound(img.width()  * crop.x()),
-                     qRound(img.height() * crop.y()),
-                     qRound(img.width()  * crop.width()),
-                     qRound(img.height() * crop.height()));
-            if (!img.copy(px).save(dest, "JPEG", 95)) {
+            if (!crop.isEmpty()) {
+                QRect px(qRound(img.width()  * crop.x()),
+                         qRound(img.height() * crop.y()),
+                         qRound(img.width()  * crop.width()),
+                         qRound(img.height() * crop.height()));
+                img = img.copy(px);
+            }
+            if (ck.enabled)
+                img = ChromaKeyProcessor::process(img, ck);
+            if (!img.save(dest, "JPEG", 95)) {
                 QMessageBox::critical(parentWidget, "Export",
                     QString("Failed to prepare frame %1 for export.").arg(i + 1));
                 return false;

@@ -5,6 +5,7 @@
 #include <QRectF>
 #include <QString>
 #include <QVector>
+#include "ChromaKeySettings.h"
 
 class Project : public QObject
 {
@@ -16,6 +17,7 @@ public:
     QPixmap pixmap(int index) const;
     QString imagePath(int index) const;
     QRectF  cropRect(int index) const;
+    ChromaKeySettings chromaSettings(int index) const;
     int     fps() const;
     QString filePath() const;
     bool    isModified() const;
@@ -27,6 +29,8 @@ public:
     void setFps(int fps);
     void setCropRect(int index, const QRectF& rect);
     void setCropRectAllFrames(const QRectF& rect);
+    void setChromaSettings(int index, const ChromaKeySettings& s);
+    void setChromaSettingsAllFrames(const ChromaKeySettings& s);
 
     bool save(const QString& path);
     bool load(const QString& path);
@@ -40,9 +44,10 @@ signals:
 private:
     void setModified(bool modified);
 
-    QVector<QString> m_imagePaths;
-    QVector<QPixmap> m_pixmaps;
-    QVector<QRectF>  m_cropRects;
+    QVector<QString>          m_imagePaths;
+    QVector<QPixmap>          m_pixmaps;
+    QVector<QRectF>           m_cropRects;
+    QVector<ChromaKeySettings> m_chromaSettings;
     int     m_fps = 12;
     QString m_filePath;
     bool    m_modified = false;

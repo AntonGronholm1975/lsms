@@ -30,6 +30,7 @@ private slots:
     void onOpenImages();
     void onExport(const QString& format);
     void onCropFrame();
+    void onChromaKey();
 
     void onPlayPause();
     void onStop();
