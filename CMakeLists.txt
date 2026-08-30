@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui Multimedia)
 
 add_executable(lsms
     src/main.cpp
@@ -32,7 +32,7 @@ add_executable(lsms
     resources/app.qrc
 )
 
-target_link_libraries(lsms PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui)
+target_link_libraries(lsms PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Multimedia)
 
 if(WIN32)
     set_target_properties(lsms PROPERTIES WIN32_EXECUTABLE TRUE)

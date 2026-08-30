@@ -36,6 +36,13 @@ public:
     QPixmap annotation() const { return m_annotation; }
     void clearAnnotation();
 
+    // Zoom & pan
+    void resetZoom();
+
+    // Layer visibility
+    void setCropLayerEnabled(bool enabled);
+    void setChromaLayerEnabled(bool enabled);
+
 signals:
     void annotationChanged(const QPixmap& layer);
 
@@ -44,6 +51,8 @@ protected:
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
+    void mouseDoubleClickEvent(QMouseEvent*) override;
+    void wheelEvent(QWheelEvent*) override;
 
 private:
     QRect  computeTarget(const QPixmap& px) const;
@@ -57,6 +66,10 @@ private:
     QVector<QPixmap> m_onionFrames;
     bool           m_onionEnabled = false;
     QRectF         m_cropRect;
+
+    // Layer visibility
+    bool           m_cropLayerEnabled   = true;
+    bool           m_chromaLayerEnabled  = true;
 
     // Chroma key
     ChromaKeySettings m_chromaSettings;
@@ -75,4 +88,10 @@ private:
     QPoint    m_drawCurrent;
 
     QRect m_target; // last computed display rect, updated in paintEvent
+
+    // Zoom & pan
+    float   m_zoomFactor = 1.0f;
+    QPointF m_panOffset;
+    bool    m_isPanning  = false;
+    QPoint  m_panStart;
 };

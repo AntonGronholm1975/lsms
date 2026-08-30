@@ -69,6 +69,7 @@ See [docs/user-guide.md](docs/user-guide.md) for the full user guide.
 ## Project Structure
 
 ```
+
 lsms/
 ├── src/
 │   ├── main.cpp

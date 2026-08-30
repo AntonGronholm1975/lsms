@@ -32,6 +32,20 @@ public:
     void setChromaSettings(int index, const ChromaKeySettings& s);
     void setChromaSettingsAllFrames(const ChromaKeySettings& s);
 
+    // Per-frame hold duration (multiples of 1/fps)
+    int  frameDuration(int index) const;
+    void setFrameDuration(int index, int ticks);
+    void setFrameDurationAllFrames(int ticks);
+
+    // Optional background audio file path
+    QString audioFilePath() const;
+    void    setAudioFilePath(const QString& path);
+
+    bool cropLayerEnabled()  const;
+    bool chromaLayerEnabled() const;
+    void setCropLayerEnabled(bool enabled);
+    void setChromaLayerEnabled(bool enabled);
+
     bool save(const QString& path);
     bool load(const QString& path);
     void reset();
@@ -40,6 +54,7 @@ signals:
     void framesChanged();
     void fpsChanged(int fps);
     void modifiedChanged(bool modified);
+    void layerVisibilityChanged();
 
 private:
     void setModified(bool modified);
@@ -48,6 +63,10 @@ private:
     QVector<QPixmap>          m_pixmaps;
     QVector<QRectF>           m_cropRects;
     QVector<ChromaKeySettings> m_chromaSettings;
+    QVector<int>              m_frameDurations;
+    QString                   m_audioFilePath;
+    bool    m_cropLayerEnabled   = true;
+    bool    m_chromaLayerEnabled  = true;
     int     m_fps = 12;
     QString m_filePath;
     bool    m_modified = false;

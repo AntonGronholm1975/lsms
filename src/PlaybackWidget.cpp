@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
+#include <QWheelEvent>
 
 PlaybackWidget::PlaybackWidget(QWidget* parent)
     : QWidget(parent)
@@ -89,20 +90,50 @@ void PlaybackWidget::clearAnnotation()
     update();
 }
 
+void PlaybackWidget::setCropLayerEnabled(bool enabled)
+{
+    if (m_cropLayerEnabled == enabled) return;
+    m_cropLayerEnabled = enabled;
+    applyChromaKey();
+    update();
+}
+
+void PlaybackWidget::setChromaLayerEnabled(bool enabled)
+{
+    if (m_chromaLayerEnabled == enabled) return;
+    m_chromaLayerEnabled = enabled;
+    applyChromaKey();
+    update();
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 QRect PlaybackWidget::computeTarget(const QPixmap& px) const
 {
     if (px.isNull()) return {};
-    // Apply crop before computing display rect
     QSizeF srcSize = px.size();
-    if (!m_cropRect.isEmpty())
+    if (!m_cropRect.isEmpty() && m_cropLayerEnabled)
         srcSize = QSizeF(px.width() * m_cropRect.width(),
                          px.height() * m_cropRect.height());
-    QSize scaled = srcSize.toSize().scaled(size(), Qt::KeepAspectRatio);
-    QRect r(QPoint(0, 0), scaled);
-    r.moveCenter(rect().center());
+
+    // Fit to widget at zoom=1, then apply zoom factor
+    QSize base = srcSize.toSize().scaled(size(), Qt::KeepAspectRatio);
+    QSize zoomed(qRound(base.width()  * m_zoomFactor),
+                 qRound(base.height() * m_zoomFactor));
+    QPoint centre(qRound(width()  / 2.0 + m_panOffset.x()),
+                  qRound(height() / 2.0 + m_panOffset.y()));
+    QRect r(QPoint(0, 0), zoomed);
+    r.moveCenter(centre);
     return r;
+}
+
+void PlaybackWidget::resetZoom()
+{
+    m_zoomFactor = 1.0f;
+    m_panOffset  = {};
+    m_displayPixmap = {};
+    applyChromaKey();
+    update();
 }
 
 QPoint PlaybackWidget::widgetToAnnotation(const QPoint& wp) const
@@ -123,16 +154,15 @@ void PlaybackWidget::ensureAnnotation()
 
 void PlaybackWidget::applyChromaKey()
 {
-    if (!m_chromaSettings.enabled || m_pixmap.isNull()) {
+    if (!m_chromaLayerEnabled || !m_chromaSettings.enabled || m_pixmap.isNull()) {
         m_displayPixmap = {};
         return;
     }
     QRect tgt = computeTarget(m_pixmap);
     if (tgt.isEmpty()) return;
 
-    // Apply crop then scale to display size — keeps preview fast
     QPixmap srcPx = m_pixmap;
-    if (!m_cropRect.isEmpty()) {
+    if (!m_cropRect.isEmpty() && m_cropLayerEnabled) {
         QRect px(qRound(m_pixmap.width()  * m_cropRect.x()),
                  qRound(m_pixmap.height() * m_cropRect.y()),
                  qRound(m_pixmap.width()  * m_cropRect.width()),
@@ -217,7 +247,7 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
 
     // Source rect within m_pixmap (crop)
     QRect srcRect = m_pixmap.rect();
-    if (!m_cropRect.isEmpty()) {
+    if (!m_cropRect.isEmpty() && m_cropLayerEnabled) {
         srcRect = QRect(
             qRound(m_pixmap.width()  * m_cropRect.x()),
             qRound(m_pixmap.height() * m_cropRect.y()),
@@ -276,16 +306,34 @@ void PlaybackWidget::paintEvent(QPaintEvent*)
         painter.drawText(rect().adjusted(4, 4, -4, -4),
             Qt::AlignTop | Qt::AlignRight, "Onion: no previous frame");
     }
+
+    // Zoom level indicator
+    if (m_zoomFactor != 1.0f) {
+        painter.setPen(QColor(200, 200, 200, 200));
+        QFont zf = painter.font();
+        zf.setPointSize(9);
+        painter.setFont(zf);
+        painter.drawText(rect().adjusted(4, 4, -4, -4),
+            Qt::AlignBottom | Qt::AlignRight,
+            QString("%1%  (double-click to reset)").arg(qRound(m_zoomFactor * 100)));
+    }
 }
 
-// ── Mouse (drawing) ───────────────────────────────────────────────────────────
+// ── Mouse (drawing + pan) ─────────────────────────────────────────────────────
 
 void PlaybackWidget::mousePressEvent(QMouseEvent* e)
 {
+    if (e->button() == Qt::LeftButton && !m_drawEnabled) {
+        // Pan mode when draw is off
+        m_isPanning = true;
+        m_panStart  = e->pos();
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
     if (!m_drawEnabled || e->button() != Qt::LeftButton) return;
-    m_isDrawing  = true;
-    m_drawStart  = e->pos();
-    m_drawLast   = e->pos();
+    m_isDrawing   = true;
+    m_drawStart   = e->pos();
+    m_drawLast    = e->pos();
     m_drawCurrent = e->pos();
 
     if (m_drawTool == DrawTool::Pen || m_drawTool == DrawTool::Eraser) {
@@ -296,6 +344,12 @@ void PlaybackWidget::mousePressEvent(QMouseEvent* e)
 
 void PlaybackWidget::mouseMoveEvent(QMouseEvent* e)
 {
+    if (m_isPanning) {
+        m_panOffset += e->pos() - m_panStart;
+        m_panStart   = e->pos();
+        update();
+        return;
+    }
     if (!m_drawEnabled || !m_isDrawing) return;
     m_drawCurrent = e->pos();
 
@@ -311,6 +365,11 @@ void PlaybackWidget::mouseMoveEvent(QMouseEvent* e)
 
 void PlaybackWidget::mouseReleaseEvent(QMouseEvent* e)
 {
+    if (m_isPanning && e->button() == Qt::LeftButton) {
+        m_isPanning = false;
+        setCursor(m_drawEnabled ? Qt::CrossCursor : Qt::ArrowCursor);
+        return;
+    }
     if (!m_drawEnabled || !m_isDrawing) return;
     m_isDrawing   = false;
     m_drawCurrent = e->pos();
@@ -319,4 +378,29 @@ void PlaybackWidget::mouseReleaseEvent(QMouseEvent* e)
         emit annotationChanged(m_annotation);
     else
         commitShapeToAnnotation();
+}
+
+void PlaybackWidget::mouseDoubleClickEvent(QMouseEvent* e)
+{
+    if (!m_drawEnabled && e->button() == Qt::LeftButton)
+        resetZoom();
+}
+
+void PlaybackWidget::wheelEvent(QWheelEvent* e)
+{
+    if (m_pixmap.isNull()) return;
+    float factor = (e->angleDelta().y() > 0) ? 1.15f : (1.0f / 1.15f);
+    float newZoom = qBound(0.1f, m_zoomFactor * factor, 10.0f);
+
+    // Keep the image point under the cursor fixed while zooming
+    QPointF cursor(e->position().x() - width()  / 2.0,
+                   e->position().y() - height() / 2.0);
+    float ratio = newZoom / m_zoomFactor;
+    m_panOffset  = cursor + (m_panOffset - cursor) * ratio;
+    m_zoomFactor = newZoom;
+
+    m_displayPixmap = {};
+    applyChromaKey();
+    update();
+    e->accept();
 }

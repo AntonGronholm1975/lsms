@@ -71,6 +71,7 @@ void Project::addImages(const QStringList& paths)
         m_pixmaps.append(px);
         m_cropRects.append(QRectF());
         m_chromaSettings.append(ChromaKeySettings{});
+        m_frameDurations.append(1);
         added = true;
     }
     if (added) {
@@ -89,6 +90,8 @@ void Project::removeFrame(int index)
         m_cropRects.remove(index);
     if (index < m_chromaSettings.size())
         m_chromaSettings.remove(index);
+    if (index < m_frameDurations.size())
+        m_frameDurations.remove(index);
     setModified(true);
     emit framesChanged();
 }
@@ -103,6 +106,8 @@ void Project::duplicateFrame(int index)
     m_cropRects.insert(index + 1, cr);
     ChromaKeySettings ck = (index < m_chromaSettings.size()) ? m_chromaSettings.at(index) : ChromaKeySettings{};
     m_chromaSettings.insert(index + 1, ck);
+    int dur = (index < m_frameDurations.size()) ? m_frameDurations.at(index) : 1;
+    m_frameDurations.insert(index + 1, dur);
     setModified(true);
     emit framesChanged();
 }
@@ -121,6 +126,8 @@ void Project::moveFrame(int from, int to)
         m_cropRects.move(from, to);
     if (from < m_chromaSettings.size() && to < m_chromaSettings.size())
         m_chromaSettings.move(from, to);
+    if (from < m_frameDurations.size() && to < m_frameDurations.size())
+        m_frameDurations.move(from, to);
     setModified(true);
     emit framesChanged();
 }
@@ -166,6 +173,57 @@ void Project::setChromaSettingsAllFrames(const ChromaKeySettings& s)
     setModified(true);
 }
 
+int Project::frameDuration(int index) const
+{
+    if (index < 0 || index >= m_frameDurations.size())
+        return 1;
+    return qMax(1, m_frameDurations.at(index));
+}
+
+void Project::setFrameDuration(int index, int ticks)
+{
+    if (index < 0 || index >= m_imagePaths.size())
+        return;
+    while (m_frameDurations.size() <= index)
+        m_frameDurations.append(1);
+    m_frameDurations[index] = qMax(1, ticks);
+    setModified(true);
+}
+
+void Project::setFrameDurationAllFrames(int ticks)
+{
+    m_frameDurations.fill(qMax(1, ticks), m_imagePaths.size());
+    setModified(true);
+}
+
+QString Project::audioFilePath() const { return m_audioFilePath; }
+
+void Project::setAudioFilePath(const QString& path)
+{
+    if (m_audioFilePath == path) return;
+    m_audioFilePath = path;
+    setModified(true);
+}
+
+bool Project::cropLayerEnabled()  const { return m_cropLayerEnabled; }
+bool Project::chromaLayerEnabled() const { return m_chromaLayerEnabled; }
+
+void Project::setCropLayerEnabled(bool enabled)
+{
+    if (m_cropLayerEnabled == enabled) return;
+    m_cropLayerEnabled = enabled;
+    setModified(true);
+    emit layerVisibilityChanged();
+}
+
+void Project::setChromaLayerEnabled(bool enabled)
+{
+    if (m_chromaLayerEnabled == enabled) return;
+    m_chromaLayerEnabled = enabled;
+    setModified(true);
+    emit layerVisibilityChanged();
+}
+
 bool Project::save(const QString& path)
 {
     QFileInfo projectFile(path);
@@ -185,6 +243,7 @@ bool Project::save(const QString& path)
             frameObj["crop"] = cropObj;
         }
         if (i < m_chromaSettings.size() && m_chromaSettings.at(i).enabled) {
+            // chroma JSON ... (unchanged)
             const ChromaKeySettings& ck = m_chromaSettings.at(i);
             QJsonObject ckObj;
             ckObj["enabled"]       = ck.enabled;
@@ -197,13 +256,23 @@ bool Project::save(const QString& path)
             ckObj["bgImagePath"]   = ck.bgImagePath;
             frameObj["chroma"]     = ckObj;
         }
+        int dur = (i < m_frameDurations.size()) ? m_frameDurations.at(i) : 1;
+        if (dur != 1)
+            frameObj["duration"] = dur;
         framesArray.append(frameObj);
     }
 
     QJsonObject root;
     root["version"] = 1;
     root["fps"] = m_fps;
+    if (!m_audioFilePath.isEmpty())
+        root["audioFile"] = m_audioFilePath;
     root["frames"] = framesArray;
+
+    QJsonObject layers;
+    layers["cropEnabled"]   = m_cropLayerEnabled;
+    layers["chromaEnabled"] = m_chromaLayerEnabled;
+    root["layers"] = layers;
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly))
@@ -264,10 +333,20 @@ bool Project::load(const QString& path)
             ck.bgImagePath   = c["bgImagePath"].toString();
         }
         m_chromaSettings.append(ck);
+        m_frameDurations.append(fobj["duration"].toInt(1));
     }
 
     emit fpsChanged(m_fps);
     emit framesChanged();
+
+    m_audioFilePath = root["audioFile"].toString();
+
+    if (root.contains("layers")) {
+        QJsonObject layers = root["layers"].toObject();
+        m_cropLayerEnabled   = layers["cropEnabled"].toBool(true);
+        m_chromaLayerEnabled = layers["chromaEnabled"].toBool(true);
+    }
+    emit layerVisibilityChanged();
     return true;
 }
 
@@ -277,9 +356,14 @@ void Project::reset()
     m_pixmaps.clear();
     m_cropRects.clear();
     m_chromaSettings.clear();
+    m_frameDurations.clear();
+    m_audioFilePath.clear();
     m_fps = 12;
     m_filePath.clear();
     m_modified = false;
+    m_cropLayerEnabled   = true;
+    m_chromaLayerEnabled  = true;
+    emit layerVisibilityChanged();
 }
 
 void Project::setModified(bool modified)

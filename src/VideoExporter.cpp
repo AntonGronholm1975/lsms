@@ -31,9 +31,13 @@ bool VideoExporter::isFfmpegAvailable()
 bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
                                  const QVector<QRectF>&  cropRects,
                                  const QVector<ChromaKeySettings>& chromaSettings,
+                                 const QVector<int>&     frameDurations,
+                                 const QString&          audioFilePath,
                                  const QString& outputPath,
                                  int fps,
                                  const QString& format,
+                                 bool cropLayerEnabled,
+                                 bool chromaLayerEnabled,
                                  QWidget* parentWidget)
 {
     if (imagePaths.isEmpty()) {
@@ -51,11 +55,16 @@ bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
     if (ext.isEmpty())
         ext = "jpg";
 
+    int frameNum = 1;
     for (int i = 0; i < imagePaths.size(); ++i) {
-        QString dest = tmpDir.filePath(
-            QString("frame_%1.%2").arg(i + 1, 4, 10, QChar('0')).arg(ext));
         QRectF crop = (i < cropRects.size()) ? cropRects.at(i) : QRectF();
         ChromaKeySettings ck = (i < chromaSettings.size()) ? chromaSettings.at(i) : ChromaKeySettings{};
+        if (!cropLayerEnabled)   crop = {};
+        if (!chromaLayerEnabled) ck   = {};
+        int duration = (i < frameDurations.size()) ? qMax(1, frameDurations.at(i)) : 1;
+
+        // Prepare the (possibly crop+chroma-processed) image once
+        QImage processedImg;
         if (!crop.isEmpty() || ck.enabled) {
             QImage img(imagePaths.at(i));
             if (!crop.isEmpty()) {
@@ -67,17 +76,27 @@ bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
             }
             if (ck.enabled)
                 img = ChromaKeyProcessor::process(img, ck);
-            if (!img.save(dest, "JPEG", 95)) {
+            processedImg = img;
+        }
+
+        // Write the frame `duration` times for variable hold time
+        for (int d = 0; d < duration; ++d) {
+            QString dest = tmpDir.filePath(
+                QString("frame_%1.%2").arg(frameNum++, 4, 10, QChar('0')).arg(ext));
+            if (!processedImg.isNull()) {
+                if (!processedImg.save(dest, "JPEG", 95)) {
+                    QMessageBox::critical(parentWidget, "Export",
+                        QString("Failed to prepare frame %1 for export.").arg(i + 1));
+                    return false;
+                }
+            } else if (!QFile::copy(imagePaths.at(i), dest)) {
                 QMessageBox::critical(parentWidget, "Export",
                     QString("Failed to prepare frame %1 for export.").arg(i + 1));
                 return false;
             }
-        } else if (!QFile::copy(imagePaths.at(i), dest)) {
-            QMessageBox::critical(parentWidget, "Export",
-                QString("Failed to prepare frame %1 for export.").arg(i + 1));
-            return false;
         }
     }
+    int totalFrames = frameNum - 1;
 
     QStringList args;
     args << "-y"
@@ -85,12 +104,24 @@ bool VideoExporter::exportVideo(const QVector<QString>& imagePaths,
          << "-start_number" << "1"
          << "-i" << tmpDir.filePath("frame_%04d." + ext);
 
-    if (format == "mp4")
+    // Mix in audio if provided
+    bool hasAudio = !audioFilePath.isEmpty() && QFile::exists(audioFilePath);
+    if (hasAudio)
+        args << "-i" << audioFilePath;
+
+    if (format == "mp4") {
         // scale filter rounds down to even dimensions required by yuv420p/H.264
         args << "-vf" << "scale=trunc(iw/2)*2:trunc(ih/2)*2"
              << "-c:v" << "libx264" << "-pix_fmt" << "yuv420p";
-    else
+        if (hasAudio)
+            args << "-c:a" << "aac" << "-b:a" << "192k";
+    } else {
         args << "-c:v" << "libvpx-vp9" << "-b:v" << "0" << "-crf" << "33";
+        if (hasAudio)
+            args << "-c:a" << "libopus";
+    }
+    if (hasAudio)
+        args << "-shortest";  // truncate to shortest stream
 
     args << outputPath;
 

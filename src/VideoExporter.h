@@ -18,8 +18,12 @@ public:
     bool exportVideo(const QVector<QString>&          imagePaths,
                      const QVector<QRectF>&            cropRects,
                      const QVector<ChromaKeySettings>& chromaSettings,
+                     const QVector<int>&               frameDurations,
+                     const QString&                    audioFilePath,
                      const QString& outputPath,
                      int fps,
                      const QString& format,
+                     bool cropLayerEnabled,
+                     bool chromaLayerEnabled,
                      QWidget* parentWidget);
 };

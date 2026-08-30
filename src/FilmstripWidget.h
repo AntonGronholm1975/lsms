@@ -11,7 +11,9 @@ class FilmstripWidget : public QListWidget
 public:
     explicit FilmstripWidget(QWidget* parent = nullptr);
 
-    void populate(int count, std::function<QPixmap(int)> pixmapFor);
+    void populate(int count,
+                  std::function<QPixmap(int)> pixmapFor,
+                  std::function<int(int)>     durationFor = nullptr);
     void selectFrame(int index);
 
 signals:
@@ -19,6 +21,7 @@ signals:
     void frameMoved(int from, int to);
     void deleteFrameRequested(int index);
     void duplicateFrameRequested(int index);
+    void frameDurationChangeRequested(int index);
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;

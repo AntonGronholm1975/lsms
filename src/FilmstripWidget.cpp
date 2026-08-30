@@ -4,6 +4,7 @@
 #include <QDropEvent>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
 
 static constexpr int kThumbSize = 100;
 static constexpr int kStripHeight = kThumbSize + 60;
@@ -30,13 +31,35 @@ FilmstripWidget::FilmstripWidget(QWidget* parent)
     });
 }
 
-void FilmstripWidget::populate(int count, std::function<QPixmap(int)> pixmapFor)
+void FilmstripWidget::populate(int count,
+                               std::function<QPixmap(int)> pixmapFor,
+                               std::function<int(int)>     durationFor)
 {
     blockSignals(true);
     clear();
     for (int i = 0; i < count; ++i) {
         QPixmap thumb = pixmapFor(i).scaled(
             kThumbSize, kThumbSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+        // Draw duration badge if frame is held longer than one tick
+        int dur = durationFor ? durationFor(i) : 1;
+        if (dur > 1) {
+            QPixmap badged(thumb.size());
+            badged.fill(Qt::transparent);
+            QPainter p(&badged);
+            p.drawPixmap(0, 0, thumb);
+            int bh = 18;
+            p.fillRect(0, 0, badged.width(), bh, QColor(0, 0, 0, 170));
+            p.setPen(Qt::white);
+            QFont f;
+            f.setPixelSize(12);
+            f.setBold(true);
+            p.setFont(f);
+            p.drawText(QRect(0, 0, badged.width(), bh),
+                       Qt::AlignCenter, QString("×%1").arg(dur));
+            thumb = badged;
+        }
+
         auto* it = new QListWidgetItem(QIcon(thumb), QString::number(i + 1));
         it->setData(Qt::UserRole, i);
         addItem(it);
@@ -82,12 +105,15 @@ void FilmstripWidget::contextMenuEvent(QContextMenuEvent* event)
     int frameIdx = row(it);
     QMenu menu(this);
     QAction* dupAct = menu.addAction("Duplicate");
+    QAction* durAct = menu.addAction("Set Duration\u2026");
     menu.addSeparator();
     QAction* delAct = menu.addAction("Delete");
 
     QAction* chosen = menu.exec(event->globalPos());
     if (chosen == dupAct)
         emit duplicateFrameRequested(frameIdx);
+    else if (chosen == durAct)
+        emit frameDurationChangeRequested(frameIdx);
     else if (chosen == delAct)
         emit deleteFrameRequested(frameIdx);
 }

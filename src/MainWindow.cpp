@@ -6,6 +6,7 @@
 #include "PlaybackWidget.h"
 #include "VideoExporter.h"
 
+#include <QAudioOutput>
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QColorDialog>
@@ -13,7 +14,9 @@
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
+#include <QMediaPlayer>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
@@ -99,6 +102,32 @@ void MainWindow::setupUi()
     tl->addWidget(m_fpsSpinBox);
 
     mainLayout->addWidget(transport);
+
+    // Layers bar
+    auto* layersBar = new QWidget(central);
+    layersBar->setFixedHeight(34);
+    auto* ll = new QHBoxLayout(layersBar);
+    ll->setContentsMargins(8, 2, 8, 2);
+    ll->setSpacing(6);
+
+    ll->addWidget(new QLabel("Layers:", layersBar));
+
+    m_cropLayerBtn = new QPushButton("Crop", layersBar);
+    m_cropLayerBtn->setCheckable(true);
+    m_cropLayerBtn->setChecked(true);
+    m_cropLayerBtn->setFixedWidth(70);
+    m_cropLayerBtn->setToolTip("Toggle crop layer on/off");
+    ll->addWidget(m_cropLayerBtn);
+
+    m_chromaLayerBtn = new QPushButton("Chroma Key", layersBar);
+    m_chromaLayerBtn->setCheckable(true);
+    m_chromaLayerBtn->setChecked(true);
+    m_chromaLayerBtn->setFixedWidth(90);
+    m_chromaLayerBtn->setToolTip("Toggle chroma key layer on/off");
+    ll->addWidget(m_chromaLayerBtn);
+
+    ll->addStretch();
+    mainLayout->addWidget(layersBar);
 
     // Drawing toolbar
     auto* drawBar = new QWidget(central);
@@ -195,6 +224,29 @@ void MainWindow::setupUi()
     });
 
     mainLayout->addWidget(drawBar);
+
+    // Audio bar
+    auto* audioBar = new QWidget(central);
+    audioBar->setFixedHeight(34);
+    auto* al = new QHBoxLayout(audioBar);
+    al->setContentsMargins(8, 2, 8, 2);
+    al->setSpacing(6);
+    al->addWidget(new QLabel("\U0001F3B5 Audio:", audioBar));
+    auto* loadAudioBtn = new QPushButton("Load\u2026", audioBar);
+    loadAudioBtn->setFixedWidth(58);
+    connect(loadAudioBtn, &QPushButton::clicked, this, &MainWindow::onLoadAudio);
+    al->addWidget(loadAudioBtn);
+    m_audioLabel = new QLabel("(none)", audioBar);
+    m_audioLabel->setMinimumWidth(120);
+    al->addWidget(m_audioLabel, 1);
+    al->addStretch();
+    mainLayout->addWidget(audioBar);
+
+    // Set up audio player
+    m_audioPlayer = new QMediaPlayer(this);
+    m_audioOutput = new QAudioOutput(this);
+    m_audioOutput->setVolume(0.8f);
+    m_audioPlayer->setAudioOutput(m_audioOutput);
 
     m_filmstripWidget = new FilmstripWidget(central);
     mainLayout->addWidget(m_filmstripWidget);
@@ -326,6 +378,8 @@ void MainWindow::connectSignals()
     connect(m_filmstripWidget, &FilmstripWidget::frameMoved, this, &MainWindow::onFrameMoved);
     connect(m_filmstripWidget, &FilmstripWidget::deleteFrameRequested, this, &MainWindow::onDeleteFrame);
     connect(m_filmstripWidget, &FilmstripWidget::duplicateFrameRequested, this, &MainWindow::onDuplicateFrame);
+    connect(m_filmstripWidget, &FilmstripWidget::frameDurationChangeRequested,
+            this, &MainWindow::onFrameDurationChange);
 
     connect(m_fpsSpinBox, &QSpinBox::valueChanged, this, [this](int val) {
         m_project->setFps(val);
@@ -336,6 +390,22 @@ void MainWindow::connectSignals()
     connect(m_playbackTimer, &QTimer::timeout, this, &MainWindow::onPlaybackTick);
     connect(m_playbackWidget, &PlaybackWidget::annotationChanged,
             this, &MainWindow::onAnnotationChanged);
+
+    connect(m_cropLayerBtn, &QPushButton::toggled,
+            m_project, &Project::setCropLayerEnabled);
+    connect(m_chromaLayerBtn, &QPushButton::toggled,
+            m_project, &Project::setChromaLayerEnabled);
+
+    connect(m_project, &Project::layerVisibilityChanged, this, [this]() {
+        m_cropLayerBtn->blockSignals(true);
+        m_cropLayerBtn->setChecked(m_project->cropLayerEnabled());
+        m_cropLayerBtn->blockSignals(false);
+        m_chromaLayerBtn->blockSignals(true);
+        m_chromaLayerBtn->setChecked(m_project->chromaLayerEnabled());
+        m_chromaLayerBtn->blockSignals(false);
+        m_playbackWidget->setCropLayerEnabled(m_project->cropLayerEnabled());
+        m_playbackWidget->setChromaLayerEnabled(m_project->chromaLayerEnabled());
+    });
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -474,15 +544,20 @@ void MainWindow::onExport(const QString& format)
     QVector<QString> paths;
     QVector<QRectF>  cropRects;
     QVector<ChromaKeySettings> chromaRects;
+    QVector<int>     durations;
     paths.reserve(m_project->frameCount());
     for (int i = 0; i < m_project->frameCount(); ++i) {
         paths.append(m_project->imagePath(i));
         cropRects.append(m_project->cropRect(i));
         chromaRects.append(m_project->chromaSettings(i));
+        durations.append(m_project->frameDuration(i));
     }
 
     VideoExporter exporter(this);
-    if (exporter.exportVideo(paths, cropRects, chromaRects, path, m_project->fps(), format, this))
+    if (exporter.exportVideo(paths, cropRects, chromaRects, durations,
+                             m_project->audioFilePath(), path,
+                             m_project->fps(), format,
+                             m_project->cropLayerEnabled(), m_project->chromaLayerEnabled(), this))
         QMessageBox::information(this, "Export",
             QString("Video exported successfully.\n\n%1").arg(path));
 }
@@ -528,6 +603,30 @@ void MainWindow::onAnnotationChanged(const QPixmap& layer)
         m_annotations[m_currentFrame] = layer;
 }
 
+void MainWindow::onLoadAudio()
+{
+    QString path = QFileDialog::getOpenFileName(this, "Load Audio File",
+        QSettings().value("lastAudioDir").toString(),
+        "Audio (*.mp3 *.wav *.ogg *.flac *.aac *.m4a)");
+    if (path.isEmpty()) return;
+    QSettings().setValue("lastAudioDir", QFileInfo(path).absolutePath());
+    m_project->setAudioFilePath(path);
+    m_audioPlayer->setSource(QUrl::fromLocalFile(path));
+    m_audioLabel->setText(QFileInfo(path).fileName());
+}
+
+void MainWindow::onFrameDurationChange(int index)
+{
+    if (index < 0 || index >= m_project->frameCount()) return;
+    bool ok;
+    int dur = QInputDialog::getInt(this, "Frame Duration",
+        QString("Hold duration for frame %1\n(multiples of 1\u2215fps):").arg(index + 1),
+        m_project->frameDuration(index), 1, 60, 1, &ok);
+    if (!ok) return;
+    m_project->setFrameDuration(index, dur);
+    refreshFilmstrip();
+}
+
 void MainWindow::onPlayPause()
 {
     setPlaying(!m_playing);
@@ -536,6 +635,8 @@ void MainWindow::onPlayPause()
 void MainWindow::onStop()
 {
     setPlaying(false);
+    m_ticksOnCurrentFrame = 0;
+    m_audioPlayer->stop();
     if (m_project->frameCount() > 0) {
         showFrame(0);
         m_filmstripWidget->blockSignals(true);
@@ -619,8 +720,15 @@ void MainWindow::onPlaybackTick()
         setPlaying(false);
         return;
     }
+    // Hold the current frame for its duration (in timer ticks)
+    if (++m_ticksOnCurrentFrame < m_project->frameDuration(m_currentFrame))
+        return;
+    m_ticksOnCurrentFrame = 0;
+
     m_currentFrame = (m_currentFrame + 1) % m_project->frameCount();
     m_playbackWidget->showFrame(m_project->pixmap(m_currentFrame));
+    m_playbackWidget->setCropRect(m_project->cropRect(m_currentFrame));
+    m_playbackWidget->setChromaSettings(m_project->chromaSettings(m_currentFrame));
 
     m_filmstripWidget->blockSignals(true);
     m_filmstripWidget->selectFrame(m_currentFrame);
@@ -629,9 +737,9 @@ void MainWindow::onPlaybackTick()
 
 void MainWindow::refreshFilmstrip()
 {
-    m_filmstripWidget->populate(m_project->frameCount(), [this](int i) {
-        return m_project->pixmap(i);
-    });
+    m_filmstripWidget->populate(m_project->frameCount(),
+        [this](int i) { return m_project->pixmap(i); },
+        [this](int i) { return m_project->frameDuration(i); });
 
     // Keep annotation vector in sync with frame count
     m_annotations.resize(m_project->frameCount());
@@ -690,10 +798,20 @@ void MainWindow::setPlaying(bool playing)
         m_playbackTimer->start(1000 / m_project->fps());
         m_playPauseBtn->setText("\u23F8 Pause");
         m_playbackWidget->setOnionFrames({}); // hide onion during playback
+        // Seek audio to position of current frame and start
+        if (m_audioPlayer->source().isValid()) {
+            double msPerTick = 1000.0 / m_project->fps();
+            qint64 audioMs = 0;
+            for (int i = 0; i < m_currentFrame; ++i)
+                audioMs += m_project->frameDuration(i) * msPerTick;
+            m_audioPlayer->setPosition(audioMs);
+            m_audioPlayer->play();
+        }
     } else {
         m_playbackTimer->stop();
         m_playPauseBtn->setText("\u25B6 Play");
         updateOnionFrames(); // restore onion when paused
+        m_audioPlayer->pause();
     }
 }
 

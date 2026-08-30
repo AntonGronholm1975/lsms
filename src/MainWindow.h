@@ -11,6 +11,10 @@ class FilmstripWidget;
 class QSpinBox;
 class QPushButton;
 class QButtonGroup;
+class QLabel;
+class QMediaPlayer;
+class QAudioOutput;
+class QSlider;
 
 class MainWindow : public QMainWindow
 {
@@ -46,6 +50,8 @@ private slots:
     void onProjectModifiedChanged(bool modified);
     void onPlaybackTick();
     void onAnnotationChanged(const QPixmap& layer);
+    void onLoadAudio();
+    void onFrameDurationChange(int index);
 
 private:
     void setupUi();
@@ -68,6 +74,18 @@ private:
     QTimer*          m_playbackTimer;
     int  m_currentFrame = 0;
     bool m_playing      = false;
+
+    // Per-frame playback tick counter
+    int m_ticksOnCurrentFrame = 0;
+
+    // Audio
+    QMediaPlayer* m_audioPlayer = nullptr;
+    QAudioOutput* m_audioOutput = nullptr;
+    QLabel*       m_audioLabel  = nullptr;
+
+    // Layers toolbar
+    QPushButton* m_cropLayerBtn;
+    QPushButton* m_chromaLayerBtn;
 
     // Drawing toolbar
     QPushButton*  m_drawModeBtn;
